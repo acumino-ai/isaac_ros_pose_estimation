@@ -298,10 +298,7 @@ void FoundationPoseTrackingNode::FoundationPoseTrackingCallback(
     maybe_input_timestamp = msg_entity->get<nvidia::gxf::Timestamp>("timestamp");
   }
   if (maybe_input_timestamp) {
-    transform_stamped.header.stamp.sec = static_cast<int32_t>(
-      maybe_input_timestamp.value()->acqtime / static_cast<uint64_t>(1e9));
-    transform_stamped.header.stamp.nanosec = static_cast<uint32_t>(
-      maybe_input_timestamp.value()->acqtime % static_cast<uint64_t>(1e9));
+    transform_stamped.header.stamp = get_clock()->now();
   } else {
     RCLCPP_WARN(
       get_logger(),
