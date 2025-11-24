@@ -49,7 +49,7 @@ namespace foundationpose
 
 /*
 ROS 2 node that select the next action - tracking or pose estimation.
-State flow: kPoseEstimatino -> kWaitingRest -> kTracking
+State flow: kPoseEstimation -> kWaitingRest -> kTracking
 */
 
 class Selector : public rclcpp::Node
@@ -67,7 +67,7 @@ public:
           nvidia::isaac_ros::nitros::NitrosImage>>(
       this, "pose_estimation/depth_image",
       nvidia::isaac_ros::nitros::nitros_image_32FC1_t::supported_type_name);
-    pose_estimation_segmenation_pub_ = std::make_shared<
+    pose_estimation_segmentation_pub_ = std::make_shared<
       nvidia::isaac_ros::nitros::ManagedNitrosPublisher<nvidia::isaac_ros::nitros::NitrosImage>>(
       this, "pose_estimation/segmentation",
       nvidia::isaac_ros::nitros::nitros_image_mono8_t::supported_type_name);
@@ -131,7 +131,7 @@ public:
       pose_estimation_image_pub_->publish(*image_msg);
       pose_estimation_camera_pub_->publish(*camera_info_msg);
       pose_estimation_depth_pub_->publish(*depth_msg);
-      pose_estimation_segmenation_pub_->publish(*segmentaion_msg);
+      pose_estimation_segmentation_pub_->publish(*segmentation_msg);
       state_ = State::kWaitingReset;
     } else if (state_ == State::kTracking) {
       // Publish all messages except segmentation to tracking
@@ -174,7 +174,7 @@ private:
   std::shared_ptr<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
       nvidia::isaac_ros::nitros::NitrosImage>> pose_estimation_depth_pub_;
   std::shared_ptr<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-      nvidia::isaac_ros::nitros::NitrosImage>> pose_estimation_segmenation_pub_;
+      nvidia::isaac_ros::nitros::NitrosImage>> pose_estimation_segmentation_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pose_estimation_camera_pub_;
 
   // Publishers for tracking
