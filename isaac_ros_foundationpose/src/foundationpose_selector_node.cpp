@@ -16,7 +16,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <cv_bridge/cv_bridge.hpp>
-#include <deque>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/time.hpp>
