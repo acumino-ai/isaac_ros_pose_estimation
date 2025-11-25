@@ -18,20 +18,21 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <rclcpp_components/register_node_macro.hpp>
 #include <rclcpp/time.hpp>
-#include <sensor_msgs/msg/image.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <stdexcept>
 
 #include "message_filters/subscriber.h"
-#include "message_filters/synchronizer.h"
 #include "message_filters/sync_policies/exact_time.h"
+#include "message_filters/synchronizer.h"
 
 #include "isaac_ros_tensor_list_interfaces/msg/tensor_list.hpp"
 
+#include "isaac_ros_managed_nitros/managed_nitros_message_filters_subscriber.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_message_filters_subscriber.hpp"
 
 #include "isaac_ros_nitros_image_type/nitros_image.hpp"
 #include "isaac_ros_nitros_image_type/nitros_image_view.hpp"
@@ -47,7 +48,7 @@ namespace foundationpose
 
 /*
 ROS 2 node that select the next action - tracking or pose estimation.
-State flow: kPoseEstimatino -> kWaitingRest -> kTracking
+State flow: kPoseEstimation -> kWaitingRest -> kTracking
 */
 
 class Selector : public rclcpp::Node
@@ -65,7 +66,7 @@ public:
           nvidia::isaac_ros::nitros::NitrosImage>>(
       this, "pose_estimation/depth_image",
       nvidia::isaac_ros::nitros::nitros_image_32FC1_t::supported_type_name);
-    pose_estimation_segmenation_pub_ = std::make_shared<
+    pose_estimation_segmentation_pub_ = std::make_shared<
       nvidia::isaac_ros::nitros::ManagedNitrosPublisher<nvidia::isaac_ros::nitros::NitrosImage>>(
       this, "pose_estimation/segmentation",
       nvidia::isaac_ros::nitros::nitros_image_mono8_t::supported_type_name);
@@ -88,11 +89,17 @@ public:
 
     // Exact Sync
     using namespace std::placeholders;
-    exact_sync_ = std::make_shared<ExactSync>(
-      ExactPolicy(20), rgb_image_sub_, depth_image_sub_, segmentation_sub_,
-      camera_info_sub_);
-    exact_sync_->registerCallback(
-      std::bind(&Selector::selectionCallback, this, _1, _2, _3, _4));
+    pe_exact_sync_ = std::make_shared<ExactPESync>(
+        ExactPEPolicy(20), rgb_image_sub_, depth_image_sub_,
+        segmentation_sub_, camera_info_sub_);
+    pe_exact_sync_->registerCallback(
+        std::bind(&Selector::poseEstimationCallback, this, _1, _2, _3, _4));
+
+    tr_exact_sync_ =
+        std::make_shared<ExactTrSync>(ExactTrPolicy(20), rgb_image_sub_,
+                                      depth_image_sub_, camera_info_sub_);
+    tr_exact_sync_->registerCallback(
+        std::bind(&Selector::trackingCallback, this, _1, _2, _3));
 
     segmentation_sub_.subscribe(this, "segmentation");
     rgb_image_sub_.subscribe(this, "image");
@@ -116,12 +123,12 @@ public:
       std::bind(&Selector::timerCallback, this));
   }
 
-  void selectionCallback(
-    const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr & image_msg,
-    const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr & depth_msg,
-    const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr & segmentaion_msg,
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info_msg)
-  {
+  void poseEstimationCallback(
+      const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &image_msg,
+      const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &depth_msg,
+      const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr
+          &segmentation_msg,
+      const sensor_msgs::msg::CameraInfo::ConstSharedPtr &camera_info_msg) {
     std::unique_lock<std::mutex> lock(mutex_);
     // Trigger next action
     if (state_ == State::kPoseEstimation) {
@@ -129,9 +136,17 @@ public:
       pose_estimation_image_pub_->publish(*image_msg);
       pose_estimation_camera_pub_->publish(*camera_info_msg);
       pose_estimation_depth_pub_->publish(*depth_msg);
-      pose_estimation_segmenation_pub_->publish(*segmentaion_msg);
+      pose_estimation_segmentation_pub_->publish(*segmentation_msg);
       state_ = State::kWaitingReset;
-    } else if (state_ == State::kTracking) {
+    }
+  }
+
+  void trackingCallback(
+      const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &image_msg,
+      const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &depth_msg,
+      const sensor_msgs::msg::CameraInfo::ConstSharedPtr &camera_info_msg) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (state_ == State::kTracking) {
       // Publish all messages except segmentation to tracking
       tracking_image_pub_->publish(*image_msg);
       tracking_camera_pub_->publish(*camera_info_msg);
@@ -172,7 +187,7 @@ private:
   std::shared_ptr<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
       nvidia::isaac_ros::nitros::NitrosImage>> pose_estimation_depth_pub_;
   std::shared_ptr<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-      nvidia::isaac_ros::nitros::NitrosImage>> pose_estimation_segmenation_pub_;
+      nvidia::isaac_ros::nitros::NitrosImage>> pose_estimation_segmentation_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pose_estimation_camera_pub_;
 
   // Publishers for tracking
@@ -208,13 +223,18 @@ private:
   State state_ = State::kPoseEstimation;
 
   // Exact message sync policy
-  using ExactPolicy = message_filters::sync_policies::ExactTime<
-    nvidia::isaac_ros::nitros::NitrosImage,
-    nvidia::isaac_ros::nitros::NitrosImage,
-    nvidia::isaac_ros::nitros::NitrosImage,
-    sensor_msgs::msg::CameraInfo>;
-  using ExactSync = message_filters::Synchronizer<ExactPolicy>;
-  std::shared_ptr<ExactSync> exact_sync_;
+  using ExactPEPolicy = message_filters::sync_policies::ExactTime<
+      nvidia::isaac_ros::nitros::NitrosImage,
+      nvidia::isaac_ros::nitros::NitrosImage,
+      nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo>;
+  using ExactPESync = message_filters::Synchronizer<ExactPEPolicy>;
+  std::shared_ptr<ExactPESync> pe_exact_sync_;
+
+  using ExactTrPolicy = message_filters::sync_policies::ExactTime<
+      nvidia::isaac_ros::nitros::NitrosImage,
+      nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo>;
+  using ExactTrSync = message_filters::Synchronizer<ExactTrPolicy>;
+  std::shared_ptr<ExactTrSync> tr_exact_sync_;
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::mutex mutex_;
