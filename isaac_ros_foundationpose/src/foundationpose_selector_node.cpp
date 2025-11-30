@@ -119,19 +119,18 @@ public:
     this->declare_parameter<int>("reset_period", 20000);
     this->get_parameter("reset_period", reset_period_);
 
-    if(reset_period_ > 0)
-    {
+    if (reset_period_ > 0) {
       timer_ = this->create_wall_timer(std::chrono::milliseconds(reset_period_),
-                                        std::bind(&Selector::timerCallback, this));
+          std::bind(&Selector::timerCallback, this));
     }
     manual_switch_srv_ = this->create_service<std_srvs::srv::Trigger>("~/estimate_pose", 
       std::bind(&Selector::manual_switch_callback, this, std::placeholders::_1,
         std::placeholders::_2));
   }
 
-  void manual_switch_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-          std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-  {
+  void manual_switch_callback(
+    [[maybe_unused]] const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response){
     RCLCPP_INFO(get_logger(), "Manually calling pose estimation");
     timerCallback();
     response->success = true;
