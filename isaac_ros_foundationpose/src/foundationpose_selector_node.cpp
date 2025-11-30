@@ -118,9 +118,11 @@ public:
     this->declare_parameter<int>("reset_period", 20000);
     this->get_parameter("reset_period", reset_period_);
 
-    timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(reset_period_),
-      std::bind(&Selector::timerCallback, this));
+    if(reset_period_ > 0)
+    {
+        timer_ = this->create_wall_timer(std::chrono::milliseconds(reset_period_),
+                                         std::bind(&Selector::timerCallback, this));
+    }
   }
 
   void poseEstimationCallback(
