@@ -22,6 +22,7 @@
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include <stdexcept>
 
 #include "message_filters/subscriber.h"
@@ -118,9 +119,22 @@ public:
     this->declare_parameter<int>("reset_period", 20000);
     this->get_parameter("reset_period", reset_period_);
 
-    timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(reset_period_),
-      std::bind(&Selector::timerCallback, this));
+    if (reset_period_ > 0) {
+      timer_ = this->create_wall_timer(std::chrono::milliseconds(reset_period_),
+          std::bind(&Selector::timerCallback, this));
+    }
+    manual_switch_srv_ = this->create_service<std_srvs::srv::Trigger>("~/estimate_pose", 
+      std::bind(&Selector::manual_switch_callback, this, std::placeholders::_1,
+        std::placeholders::_2));
+  }
+
+  void manual_switch_callback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /* request */,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response){
+    RCLCPP_INFO(get_logger(), "Manually calling pose estimation");
+    timerCallback();
+    response->success = true;
+    response->message = "Manually called pose estimation";
   }
 
   void poseEstimationCallback(
@@ -235,6 +249,8 @@ private:
       nvidia::isaac_ros::nitros::NitrosImage, sensor_msgs::msg::CameraInfo>;
   using ExactTrSync = message_filters::Synchronizer<ExactTrPolicy>;
   std::shared_ptr<ExactTrSync> tr_exact_sync_;
+
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr manual_switch_srv_;
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::mutex mutex_;
