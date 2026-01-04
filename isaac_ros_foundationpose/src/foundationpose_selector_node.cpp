@@ -23,6 +23,7 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_srvs/srv/trigger.hpp>
+#include <shared_mutex>
 #include <stdexcept>
 
 #include "message_filters/subscriber.h"
@@ -118,7 +119,6 @@ public:
     // reset period in ms after which pose estimation will be triggered
     this->declare_parameter<int>("reset_period", 20000);
     this->get_parameter("reset_period", reset_period_);
-
     if (reset_period_ > 0) {
       timer_ = this->create_wall_timer(std::chrono::milliseconds(reset_period_),
           std::bind(&Selector::timerCallback, this));
@@ -143,7 +143,7 @@ public:
       const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr
           &segmentation_msg,
       const sensor_msgs::msg::CameraInfo::ConstSharedPtr &camera_info_msg) {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock lock{state_mutex_};
     // Trigger next action
     if (state_ == State::kPoseEstimation) {
       // Publish all other messages except pose matrix to pose estimation
@@ -159,7 +159,7 @@ public:
       const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &image_msg,
       const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &depth_msg,
       const sensor_msgs::msg::CameraInfo::ConstSharedPtr &camera_info_msg) {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::shared_lock lock{state_mutex_};
     if (state_ == State::kTracking) {
       // Publish all messages except segmentation to tracking
       tracking_image_pub_->publish(*image_msg);
@@ -172,9 +172,10 @@ public:
   void poseForwardCallback(
     const isaac_ros_tensor_list_interfaces::msg::TensorList::ConstSharedPtr & tracking_output_msg)
   {
-    std::unique_lock<std::mutex> lock(pose_mutex_);
     // Discard the stale pose messages from tracking to avoid drift
+    std::shared_lock state_lock{state_mutex_};
     if (state_ == State::kTracking) {
+      std::unique_lock lock{pose_mutex_};
       tracking_pose_msg_ = tracking_output_msg;
     }
   }
@@ -183,14 +184,15 @@ public:
     const isaac_ros_tensor_list_interfaces::msg::TensorList::ConstSharedPtr
     & pose_estimation_output_msg)
   {
-    std::unique_lock<std::mutex> lock(pose_mutex_);
+    std::unique_lock state_lock{state_mutex_};
+    std::unique_lock pose_lock{pose_mutex_};
     tracking_pose_msg_ = pose_estimation_output_msg;
     state_ = kTracking;
   }
 
   void timerCallback()
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock lock{state_mutex_};
     state_ = State::kPoseEstimation;
   }
 
@@ -253,7 +255,7 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr manual_switch_srv_;
 
   rclcpp::TimerBase::SharedPtr timer_;
-  std::mutex mutex_;
+  std::shared_mutex state_mutex_;
   std::mutex pose_mutex_;
   isaac_ros_tensor_list_interfaces::msg::TensorList::ConstSharedPtr tracking_pose_msg_;
 
