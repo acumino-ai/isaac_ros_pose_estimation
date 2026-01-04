@@ -21,7 +21,6 @@
 #include "detection3_d_array_message/detection3_d_array_message.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/transform_broadcaster.h"
 
 #include "isaac_ros_nitros_camera_info_type/nitros_camera_info.hpp"
 #include "isaac_ros_nitros_detection3_d_array_type/nitros_detection3_d_array.hpp"
@@ -168,6 +167,7 @@ FoundationPoseTrackingNode::FoundationPoseTrackingNode(rclcpp::NodeOptions optio
     std::placeholders::_1, std::placeholders::_2);
 
   RCLCPP_DEBUG(get_logger(), "[FoundationPoseTrackingNode] Constructor");
+  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
   // Open configuration YAML file
   const std::string package_directory = ament_index_cpp::get_package_share_directory(
@@ -286,8 +286,6 @@ void FoundationPoseTrackingNode::postLoadGraphCallback()
 void FoundationPoseTrackingNode::FoundationPoseTrackingCallback(
   const gxf_context_t context, nitros::NitrosTypeBase & msg)
 {
-  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_ =
-    std::make_unique<tf2_ros::TransformBroadcaster>(*this);
   geometry_msgs::msg::TransformStamped transform_stamped;
 
   auto msg_entity = nvidia::gxf::Entity::Shared(context, msg.handle);

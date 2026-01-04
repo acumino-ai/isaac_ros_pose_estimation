@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include <tf2_ros/transform_broadcaster.h>
 #include <vision_msgs/msg/detection3_d_array.hpp>
 
 #include "isaac_ros_nitros/nitros_node.hpp"
@@ -51,6 +52,8 @@ public:
   void FoundationPoseTrackingCallback(const gxf_context_t context, nitros::NitrosTypeBase & msg);
 
 private:
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
   // The name of the YAML configuration file
   const std::string configuration_file_;
   uint32_t resized_image_width_;
