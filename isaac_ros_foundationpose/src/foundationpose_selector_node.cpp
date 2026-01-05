@@ -143,7 +143,7 @@ public:
       const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr
           &segmentation_msg,
       const sensor_msgs::msg::CameraInfo::ConstSharedPtr &camera_info_msg) {
-    std::unique_lock lock{state_mutex_};
+    std::unique_lock state_lock{state_mutex_};
     // Trigger next action
     if (state_ == State::kPoseEstimation) {
       // Publish all other messages except pose matrix to pose estimation
@@ -159,7 +159,7 @@ public:
       const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &image_msg,
       const nvidia::isaac_ros::nitros::NitrosImage::ConstSharedPtr &depth_msg,
       const sensor_msgs::msg::CameraInfo::ConstSharedPtr &camera_info_msg) {
-    std::shared_lock lock{state_mutex_};
+    std::shared_lock state_lock{state_mutex_};
     if (state_ == State::kTracking) {
       // Publish all messages except segmentation to tracking
       tracking_image_pub_->publish(*image_msg);
@@ -175,7 +175,7 @@ public:
     // Discard the stale pose messages from tracking to avoid drift
     std::shared_lock state_lock{state_mutex_};
     if (state_ == State::kTracking) {
-      std::unique_lock lock{pose_mutex_};
+      std::unique_lock pose_lock{pose_mutex_};
       tracking_pose_msg_ = tracking_output_msg;
     }
   }
@@ -192,7 +192,7 @@ public:
 
   void timerCallback()
   {
-    std::unique_lock lock{state_mutex_};
+    std::unique_lock state_lock{state_mutex_};
     state_ = State::kPoseEstimation;
   }
 
